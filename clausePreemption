@@ -1,0 +1,259 @@
+//Write your own contracts here. Currently compiles using solc v0.4.15+commit.bbb8e64f.
+/**
+ *Submitted for verification at Etherscan.io on 2019-07-28
+*/
+
+// poole_party
+// File: openzeppelin-solidity/contracts/token/ERC20/IERC20.sol
+
+pragma solidity ^0.5.0;
+
+/**
+ * @dev Interface of the ERC20 standard as defined in the EIP. Does not include
+ * the optional functions; to access them see `ERC20Detailed`.
+ */
+interface IERC20 {
+    /**
+     * @dev Returns the amount of tokens in existence.
+     */
+    function totalSupply() external view returns (uint256);
+
+    /**
+     * @dev Returns the amount of tokens owned by `account`.
+     */
+    function balanceOf(address account) external view returns (uint256);
+
+    /**
+     * @dev Moves `amount` tokens from the caller's account to `recipient`.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a `Transfer` event.
+     */
+    function transfer(address recipient, uint256 amount) external returns (bool);
+
+    /**
+     * @dev Returns the remaining number of tokens that `spender` will be
+     * allowed to spend on behalf of `owner` through `transferFrom`. This is
+     * zero by default.
+     *
+     * This value changes when `approve` or `transferFrom` are called.
+     */
+    function allowance(address owner, address spender) external view returns (uint256);
+
+    /**
+     * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * > Beware that changing an allowance with this method brings the risk
+     * that someone may use both the old and the new allowance by unfortunate
+     * transaction ordering. One possible solution to mitigate this race
+     * condition is to first reduce the spender's allowance to 0 and set the
+     * desired value afterwards:
+     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+     *
+     * Emits an `Approval` event.
+     */
+    function approve(address spender, uint256 amount) external returns (bool);
+
+    /**
+     * @dev Moves `amount` tokens from `sender` to `recipient` using the
+     * allowance mechanism. `amount` is then deducted from the caller's
+     * allowance.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a `Transfer` event.
+     */
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+
+    /**
+     * @dev Emitted when `value` tokens are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    /**
+     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
+     * a call to `approve`. `value` is the new allowance.
+     */
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+
+pragma solidity 0.5.8;
+
+contract clausePreemption {
+    
+    // Les différents états du contrat possibles
+	enum EtatsContrat {
+		NONE,
+		STATUS_INITIALIZED, // Juste après la création du contrat
+		STATUS_OPEN_TIERCE, // La tierce personne a ouvert un contrat
+		STATUS_OPEN_ASSOCIE, // l'associé a ouvert un contrat
+		STATUS_REDEEMED // L'acheteur a réclamé ses token, fin de vie du contrat
+	}
+	
+	// Permet d'enregistrer le statut du contrat
+	EtatsContrat public etatContrat;
+    
+    // Différents Event lorsqu'un utilisateur fait une action
+	event Initialized(address indexed _cedant, uint256 _quantiteToken);
+	event Opened(address indexed _buyer, uint256 premiumAmount);
+	event Redeemed(address indexed _buyer, uint256 _paymentAmount);
+
+  address public cedant;    // adresse du cedant
+  address public tierce;    // adresse de la personne tierce
+  address public associeAcheteur;    //Va nous servir a enregistrer l'associé qui achète
+  address[] public associes;    // tableau d'adresses des associés (comment les rentrer dans le contrat ????)
+
+  IERC20 public tokenActif;      // l'action que veut vendre le cédant
+  IERC20 public tokenAchat;     // les token qui servent à payer
+
+  uint256 public quantiteToken; // la quantité d'action à vendre
+  uint256 public prixToken;     // le prix par action
+  uint256 public premiumAmount; // Le montant de token qu'il faut payer pour ouvrir le contrat
+  uint public temps;         // variable qui va nous servir pour compter la date d'échéance de 3 mois
+
+    // Le cédant initie le contrat en indiquant tous les paramètres
+  constructor(IERC20 _tokenActif, IERC20 _tokenAchat, uint256 _quantiteToken, uint256 _prixToken, uint256 _premiumAmount, address _tierce) public {
+      
+      // paramètres valides
+      require(address(_tokenActif) != address(0), "L'adresse du token ne doit pas être 0x0");
+      require(address(_tokenAchat) != address(0), "Le token d'achat ne doit pas être 0x0");
+      require(_quantiteToken > 0, "La quantité de l'actif doit être valide");
+      require(_prixToken > 0, "Le prix de l'actif doit être valide");
+      require(_premiumAmount > 0, "The premium amount price must be valid");
+      require(_tierce != address(0), "L'adresse de la personne tierce ne doit pas être 0x0");
+      
+      // Enregistrement des paramètres
+      cedant = msg.sender;
+      tokenActif = _tokenActif;
+      tokenAchat = _tokenAchat;
+      quantiteToken = _quantiteToken;
+      prixToken = _prixToken;
+      premiumAmount = _premiumAmount;
+      tierce = _tierce;
+      
+      // le contrat n'existe pas encore
+      etatContrat = EtatsContrat.NONE;
+  }
+  
+    // Seulement le cédant initialise le contrat
+  	function initialize() public {
+  	    
+  	    require(etatContrat == EtatsContrat.NONE);
+
+		require(msg.sender == cedant, "Seulement le cédant peut initialiser le contrat");
+
+		// Le cédant envoie ses token au SC
+		require(tokenActif.transferFrom(cedant, address(this), quantiteToken), "Must provide initial escrow token");
+		
+		//On update l'état du contrat
+		etatContrat = EtatsContrat.STATUS_INITIALIZED;
+		
+		// Déclenchement du temps de 3 mois
+		temps = now;
+
+
+		// Emit the event
+		emit Initialized(cedant, quantiteToken);
+	}
+	
+	
+	function open() public {
+	    
+	    require(etatContrat == EtatsContrat.STATUS_INITIALIZED, "Le contrat doit être initialisé pour être ouvert");
+	    
+	    // si l'acheteur est la tierce personne
+	    if(msg.sender == tierce) { 
+	        
+	        // et si il s'est passé 3 mois
+	        require(now > temps + 91 days);
+	        
+	        // On transfère les token d'achat au vendeur
+		    require(tokenAchat.transferFrom(tierce, cedant, premiumAmount), "Must pay premium to open contract");
+		    
+		    //On update l'état du contrat
+		    etatContrat = EtatsContrat.STATUS_OPEN_TIERCE;
+		
+		    // Emit the event
+		    emit Opened(tierce, premiumAmount);
+		    
+		    
+		    // si l'acheteur est un associé
+	    } else for (uint i; i< associes.length; i++) {
+	        if(msg.sender == associes[i]) {
+	            
+	            associeAcheteur = msg.sender;
+	            
+	            // On transfère les token d'achat au vendeur
+		        require(tokenAchat.transferFrom(associeAcheteur, cedant, premiumAmount), "Must pay premium to open contract");
+		
+		        //On update l'état du contrat
+		        etatContrat = EtatsContrat.STATUS_OPEN_ASSOCIE;
+		        
+		        // Emit the event
+		        emit Opened(associeAcheteur, premiumAmount);
+	            
+	        } // fin si
+	        
+	    } // fin boucle
+	} // fin fonction
+	
+	
+		function redeem() public {
+		    
+		    
+		// On vérifie la validité du contrat
+		require( etatContrat == EtatsContrat.STATUS_OPEN_TIERCE || etatContrat == EtatsContrat.STATUS_OPEN_ASSOCIE, "Contract must be in open state to redeem it");
+		
+		// dans le cas où c'est la tierce personne qui a acheté
+		if (etatContrat == EtatsContrat.STATUS_OPEN_TIERCE) {
+		    
+		    require(msg.sender == tierce, "Seul la tierce personne peut réclamer un contrat");
+		   
+		    // Calcul du prix qui doit être payé
+		    uint256 paymentAmount = quantiteToken * prixToken;
+		    
+		    // La tierce personne paye le cédant
+		    require(tokenAchat.transferFrom(tierce, cedant, paymentAmount), "Must pay amount * strike to redeem contract");
+		   
+		   	// On transfère les actifs à la tierce personne
+		    tokenActif.transfer(tierce, quantiteToken);
+		    
+		    // Update l'état du contrat
+		    etatContrat = EtatsContrat.STATUS_REDEEMED;
+		    
+		    // Emit the event
+		    emit Redeemed(tierce, paymentAmount);
+		    
+		    
+		    //dans le cas où c'est un associé qui a acheté
+		} else if (etatContrat == EtatsContrat.STATUS_OPEN_ASSOCIE) {
+		    require(msg.sender == associeAcheteur, "Seul l'associé peut réclamer un contrat");
+		    
+		    // Calcul du prix qui doit être payé
+		    uint256 paymentAmount = quantiteToken * prixToken;
+		    
+		    // L'associé paye le cédant
+		    require(tokenAchat.transferFrom(associeAcheteur, cedant, paymentAmount), "Must pay amount * strike to redeem contract");
+		   
+		   	// On transfère les actifs à l'associé
+		    tokenActif.transfer(associeAcheteur, quantiteToken);
+		    
+		    // Update l'état du contrat
+		    etatContrat = EtatsContrat.STATUS_REDEEMED;
+		    
+		    // Emit the event
+		    emit Redeemed(associeAcheteur, paymentAmount);
+		}
+	}
+}
+
+
+
+
