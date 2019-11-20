@@ -108,7 +108,7 @@ contract clausePreemption {
   address public cedant;    // adresse du cedant
   address public tierce;    // adresse de la personne tierce
   address public associeAcheteur;    //Va nous servir a enregistrer l'associé qui achète
-  address[] public associes;    // tableau d'adresses des associés (comment les rentrer dans le contrat ????)
+  address[] public associes;    // tableau d'adresses des associés (comment les rentrer dans le contrat ????) ==> les adresses seront préalablement rentrées.
 
   IERC20 public tokenActif;      // l'action que veut vendre le cédant
   IERC20 public tokenAchat;     // les token qui servent à payer
@@ -116,7 +116,7 @@ contract clausePreemption {
   uint256 public quantiteToken; // la quantité d'action à vendre
   uint256 public prixToken;     // le prix par action
   uint256 public premiumAmount; // Le montant de token qu'il faut payer pour ouvrir le contrat
-  uint public temps;         // variable qui va nous servir pour compter la date d'échéance de 3 mois
+  uint256 public temps;         // variable qui va nous servir pour compter la date d'échéance de 3 mois
 
     // Le cédant initie le contrat en indiquant tous les paramètres
   constructor(IERC20 _tokenActif, IERC20 _tokenAchat, uint256 _quantiteToken, uint256 _prixToken, uint256 _premiumAmount, address _tierce) public {
@@ -185,6 +185,8 @@ contract clausePreemption {
 		    
 		    
 		    // si l'acheteur est un associé
+		    // le prob de cette boucle c'est que c'et hyper consommateur de gaz
+		    //faut rajouter un require pour permettre aux associés d'acheter les actions QUE pendant la période de 3 mois
 	    } else for (uint i; i< associes.length; i++) {
 	        if(msg.sender == associes[i]) {
 	            
@@ -206,7 +208,7 @@ contract clausePreemption {
 	
 	
 		function redeem() public {
-		    
+		   // ce serait mieux que la fonction redeem puisse être utilisé par le vendeur et l'acheteur = chacun récupère son dû en même temps. Le fait que le vendeur puisse être payé dans une fonction différente / avant que le cessionnaire reçoit ses actions rend l'opération moins trustless.
 		    
 		// On vérifie la validité du contrat
 		require( etatContrat == EtatsContrat.STATUS_OPEN_TIERCE || etatContrat == EtatsContrat.STATUS_OPEN_ASSOCIE, "Contract must be in open state to redeem it");
@@ -233,6 +235,8 @@ contract clausePreemption {
 		    
 		    
 		    //dans le cas où c'est un associé qui a acheté
+		    
+		    
 		} else if (etatContrat == EtatsContrat.STATUS_OPEN_ASSOCIE) {
 		    require(msg.sender == associeAcheteur, "Seul l'associé peut réclamer un contrat");
 		    
