@@ -86,178 +86,173 @@ interface IERC20 {
 
 pragma solidity 0.5.8;
 
-contract clausePreemption {
+contract clausePreemption is IERC20 {
     
-    // Les différents états du contrat possibles
-	enum EtatsContrat {
+    	enum EtatsContrat {
 		NONE,
 		STATUS_INITIALIZED, // Juste après la création du contrat
 		STATUS_OPEN_TIERCE, // La tierce personne a ouvert un contrat
 		STATUS_OPEN_ASSOCIE, // l'associé a ouvert un contrat
-		STATUS_REDEEMED // L'acheteur a réclamé ses token, fin de vie du contrat
+		STATUS_REDEEMED // Le vendeur a récupéré l'argent
 	}
 	
-	// Permet d'enregistrer le statut du contrat
-	EtatsContrat public etatContrat;
+		// Permet d'enregistrer le statut du contrat
+	    EtatsContrat public etatContrat;
     
-    // Différents Event lorsqu'un utilisateur fait une action
-	event Initialized(address indexed _cedant, uint256 _quantiteToken);
-	event Opened(address indexed _buyer, uint256 premiumAmount);
-	event Redeemed(address indexed _buyer, uint256 _paymentAmount);
-
-  address public cedant;    // adresse du cedant
-  address public tierce;    // adresse de la personne tierce
-  address public associeAcheteur;    //Va nous servir a enregistrer l'associé qui achète
-  address[] public associes;    // tableau d'adresses des associés (comment les rentrer dans le contrat ????) ==> les adresses seront préalablement rentrées.
-
-  IERC20 public tokenActif;      // l'action que veut vendre le cédant
-  IERC20 public tokenAchat;     // les token qui servent à payer
-
-  uint256 public quantiteToken; // la quantité d'action à vendre
-  uint256 public prixToken;     // le prix par action
-  uint256 public premiumAmount; // Le montant de token qu'il faut payer pour ouvrir le contrat
-  uint256 public temps;         // variable qui va nous servir pour compter la date d'échéance de 3 mois
-
+    //Evenements
+    event OuvertAPreemption(uint prixAction, uint nbreActions);
+    event EchecPreemption(uint quantiteToken, uint nbreActionsPreemptes);
+    event ReussitePreemption(uint quantiteToken);
+    
+    
+    struct Associe {
+        address addr;
+        uint256 partSociete;
+        uint256 nbActionVoulue;
+    }
+    
+    mapping(address => uint256) balances;   //permet d'avoir le nombre de token associé à une adresse
+    
+    address public cedant;    // adresse du cedant
+    Associe[] public associes;    // tableau d'associés
+    Associe[] public associesPreemptes; // tableau des associés ayant préemptés
+    address public societe;     // l'adresse de la société
+    
+    IERC20 public tokenActif;      // l'action que veut vendre le cédant
+    IERC20 public tokenAchat;     // les token qui servent à payer
+    
+    uint256 public quantiteToken; // la quantité d'action à vendre
+    uint256 public prixToken;     // le prix par action
+    uint256 public temps;         // variable qui va nous servir pour compter la date d'échéance de 3 mois
+    uint256 public paymentAmount; // le paiement de l'acheteur
+    uint256 public nbreActionsPreemptes; // nombre d'action préemptées par un associé
+    
     // Le cédant initie le contrat en indiquant tous les paramètres
-  constructor(IERC20 _tokenActif, IERC20 _tokenAchat, uint256 _quantiteToken, uint256 _prixToken, uint256 _premiumAmount, address _tierce) public {
-      
-      // paramètres valides
-      require(address(_tokenActif) != address(0), "L'adresse du token ne doit pas être 0x0");
-      require(address(_tokenAchat) != address(0), "Le token d'achat ne doit pas être 0x0");
-      require(_quantiteToken > 0, "La quantité de l'actif doit être valide");
-      require(_prixToken > 0, "Le prix de l'actif doit être valide");
-      require(_premiumAmount > 0, "The premium amount price must be valid");
-      require(_tierce != address(0), "L'adresse de la personne tierce ne doit pas être 0x0");
-      
-      // Enregistrement des paramètres
-      cedant = msg.sender;
-      tokenActif = _tokenActif;
-      tokenAchat = _tokenAchat;
-      quantiteToken = _quantiteToken;
-      prixToken = _prixToken;
-      premiumAmount = _premiumAmount;
-      tierce = _tierce;
-      
-      // le contrat n'existe pas encore
-      etatContrat = EtatsContrat.NONE;
-  }
-  
-    // Seulement le cédant initialise le contrat
-  	function initialize() public {
-  	    
-  	    require(etatContrat == EtatsContrat.NONE);
-
-		require(msg.sender == cedant, "Seulement le cédant peut initialiser le contrat");
-
-		// Le cédant envoie ses token au SC
-		require(tokenActif.transferFrom(cedant, address(this), quantiteToken), "Must provide initial escrow token");
-		
-		//On update l'état du contrat
-		etatContrat = EtatsContrat.STATUS_INITIALIZED;
-		
-		// Déclenchement du temps de 3 mois
-		temps = now;
-
-
-		// Emit the event
-		emit Initialized(cedant, quantiteToken);
-	}
-	
-	
-	function open() public {
-	    
-	    require(etatContrat == EtatsContrat.STATUS_INITIALIZED, "Le contrat doit être initialisé pour être ouvert");
-	    
-	    // si l'acheteur est la tierce personne
-	    if(msg.sender == tierce) { 
-	        
-	        // et si il s'est passé 3 mois
-	        require(now > temps + 91 days);
-	        
-	        // On transfère les token d'achat au vendeur
-		    require(tokenAchat.transferFrom(tierce, cedant, premiumAmount), "Must pay premium to open contract");
-		    
-		    //On update l'état du contrat
-		    etatContrat = EtatsContrat.STATUS_OPEN_TIERCE;
-		
-		    // Emit the event
-		    emit Opened(tierce, premiumAmount);
-		    
-		    
-		    // si l'acheteur est un associé
-		    // le prob de cette boucle c'est que c'et hyper consommateur de gaz
-		    //faut rajouter un require pour permettre aux associés d'acheter les actions QUE pendant la période de 3 mois
-	    } else for (uint i; i< associes.length; i++) {
-	        if(msg.sender == associes[i]) {
-	            
-	            associeAcheteur = msg.sender;
-	            
-	            // On transfère les token d'achat au vendeur
-		        require(tokenAchat.transferFrom(associeAcheteur, cedant, premiumAmount), "Must pay premium to open contract");
-		
-		        //On update l'état du contrat
-		        etatContrat = EtatsContrat.STATUS_OPEN_ASSOCIE;
-		        
-		        // Emit the event
-		        emit Opened(associeAcheteur, premiumAmount);
-	            
-	        } // fin si
-	        
-	    } // fin boucle
-	} // fin fonction
-	
-	
-		function redeem() public {
-		   // ce serait mieux que la fonction redeem puisse être utilisé par le vendeur et l'acheteur = chacun récupère son dû en même temps. Le fait que le vendeur puisse être payé dans une fonction différente / avant que le cessionnaire reçoit ses actions rend l'opération moins trustless.
-		    
-		// On vérifie la validité du contrat
-		require( etatContrat == EtatsContrat.STATUS_OPEN_TIERCE || etatContrat == EtatsContrat.STATUS_OPEN_ASSOCIE, "Contract must be in open state to redeem it");
-		
-		// dans le cas où c'est la tierce personne qui a acheté
-		if (etatContrat == EtatsContrat.STATUS_OPEN_TIERCE) {
-		    
-		    require(msg.sender == tierce, "Seul la tierce personne peut réclamer un contrat");
-		   
-		    // Calcul du prix qui doit être payé
-		    uint256 paymentAmount = quantiteToken * prixToken;
-		    
-		    // La tierce personne paye le cédant
-		    require(tokenAchat.transferFrom(tierce, cedant, paymentAmount), "Must pay amount * strike to redeem contract");
-		   
-		   	// On transfère les actifs à la tierce personne
-		    tokenActif.transfer(tierce, quantiteToken);
-		    
-		    // Update l'état du contrat
-		    etatContrat = EtatsContrat.STATUS_REDEEMED;
-		    
-		    // Emit the event
-		    emit Redeemed(tierce, paymentAmount);
-		    
-		    
-		    //dans le cas où c'est un associé qui a acheté
-		    
-		    
-		} else if (etatContrat == EtatsContrat.STATUS_OPEN_ASSOCIE) {
-		    require(msg.sender == associeAcheteur, "Seul l'associé peut réclamer un contrat");
-		    
-		    // Calcul du prix qui doit être payé
-		    uint256 paymentAmount = quantiteToken * prixToken;
-		    
-		    // L'associé paye le cédant
-		    require(tokenAchat.transferFrom(associeAcheteur, cedant, paymentAmount), "Must pay amount * strike to redeem contract");
-		   
-		   	// On transfère les actifs à l'associé
-		    tokenActif.transfer(associeAcheteur, quantiteToken);
-		    
-		    // Update l'état du contrat
-		    etatContrat = EtatsContrat.STATUS_REDEEMED;
-		    
-		    // Emit the event
-		    emit Redeemed(associeAcheteur, paymentAmount);
-		}
-	}
+    constructor(IERC20 _tokenActif, IERC20 _tokenAchat) public {
+          
+        // paramètres valides
+        require(address(_tokenActif) != address(0), "L'adresse du token ne doit pas être 0x0");
+        require(address(_tokenAchat) != address(0), "Le token d'achat ne doit pas être 0x0");
+          
+        // Enregistrement des paramètres
+        cedant = msg.sender;
+        tokenActif = _tokenActif;
+        tokenAchat = _tokenAchat;
+          
+        // le contrat n'existe pas encore (à voir si on a besoin de mettre des etats au contrat)
+        etatContrat = EtatsContrat.NONE;
+    }
+    
+    
+    function transfertAction(uint256 nbreActionsVendues, uint256 prixAction, address cessionnaire) public {
+        
+        quantiteToken = nbreActionsVendues; // on met à jour la quantité d'action à vendre
+        prixToken = prixAction;             // on met à jour le prix de l'action
+        paymentAmount = quantiteToken * prixToken;  // on calcule le prix à payer
+        
+        bool transferEffectue = false;
+        
+        for (uint i=0; i< associes.length; i++) {
+            if(cessionnaire == associes[i].addr) {       // on regarde si le cessionnaire est un associé
+                tokenAchat.transfer(address(this), paymentAmount);  // on transfère au SC les actions
+                transferEffectue = true;
+                etatContrat = EtatsContrat.STATUS_OPEN_ASSOCIE;
+            }
+        }
+        if (transferEffectue == false) { // cette vérification permet de savoir si un transfer a déjà été fait, donc si le cessionnaire était un associé ou non
+            // si on rentre dans ce if, c'est que le cessionnaire n'est pas un associé
+            tokenAchat.transfer(address(this), paymentAmount);
+            temps = now;
+            emit OuvertAPreemption(prixAction, nbreActionsVendues);
+            etatContrat = EtatsContrat.STATUS_OPEN_TIERCE;
+        }
+        
+        etatContrat = EtatsContrat.STATUS_INITIALIZED;
+    }
+    
+    function exercicePreemption(IERC20 tokenAchat, uint nbreActions) public {
+        
+        require(etatContrat == EtatsContrat.STATUS_INITIALIZED);
+        
+        // on vérifie qu'il ne s'est pas encore passé 3 mois
+        require(now < temps + 91 days);
+        
+        //on calcule le prix à payer par l'associé en fonction du nombre d'actions voulues
+        uint paiement = nbreActions * prixToken;
+        
+        for (uint i=0; i< associes.length; i++) {
+            if(msg.sender == associes[i].addr) {     //on vérifie que msg.sender est un associé
+                tokenAchat.transfer(address(this), paiement);
+                nbreActionsPreemptes = nbreActionsPreemptes + nbreActions;  //on incrémente le nbreActionsPreemptes
+                associesPreemptes.push(associes[i]);
+                
+                etatContrat = EtatsContrat.STATUS_OPEN_ASSOCIE;
+            }
+        }
+    }
+    
+    function repartitionPreemption() public {
+        
+        //on vérifie que le délai soit passé
+        require(now > temps + 91 days);
+        
+        //on vérifie que le msg.sender soit la société
+        require(msg.sender == societe);
+        
+        if(quantiteToken > nbreActionsPreemptes) { // si le nombre d'actions préemptées est inférieur au nombre d'action à vendre
+            for(uint i=0; i< associesPreemptes.length; i++) {
+                
+                //on rembourse les associés
+                tokenAchat.transfer(associesPreemptes[i].addr, associes[i].nbActionVoulue * prixToken);
+                emit EchecPreemption(quantiteToken, nbreActionsPreemptes);
+            }
+        } else if (quantiteToken == nbreActionsPreemptes) {
+            for (uint i=0; i< associesPreemptes.length; i++) {
+                
+                // on transfère les actions aux associés ayant préemptés
+                tokenActif.transfer(associesPreemptes[i].addr,associes[i].nbActionVoulue);
+                emit ReussitePreemption(quantiteToken);
+            }
+        } else {    // si quantiteToken < nbreActionsPreemptes
+            for (uint i=0; i< associesPreemptes.length; i++) {
+                
+                //on calcule le nombre d'action à récupérer en fonction de la part de l'associé dans la société
+                uint256 actionRecuperees = (associesPreemptes[i].nbActionVoulue * associesPreemptes[i].partSociete)/100;
+                
+                // on transfère le nombre d'action à l'associé
+                tokenActif.transfer(associesPreemptes[i].addr, actionRecuperees);
+                emit ReussitePreemption(quantiteToken);
+            }
+        }
+    }
+    
+    function recupererArgent() public {
+        require(msg.sender == cedant);
+        if(etatContrat == EtatsContrat.STATUS_OPEN_ASSOCIE || etatContrat == EtatsContrat.STATUS_OPEN_TIERCE){
+            tokenAchat.transfer(cedant, paymentAmount);
+        }
+    }
+    
+    
+    
+    //implémentation des fonctions liées aux tokens
+    function balanceOf(address tokenOwner) public view returns (uint) {
+  return balances[tokenOwner];
+    }
+    
+    function transfer(address receiver, uint numTokens) public returns (bool) {
+      require(numTokens <= balances[msg.sender]);
+      balances[msg.sender] = balances[msg.sender] - numTokens;
+      balances[receiver] = balances[receiver] + numTokens;
+      emit Transfer(msg.sender, receiver, numTokens);
+      return true;
+    }
+    
+    function transferFrom(address owner, address buyer, uint numTokens) public returns (bool) {
+      require(numTokens <= balances[owner]);
+      balances[owner] = balances[owner] - numTokens;
+      balances[buyer] = balances[buyer] + numTokens;
+      emit Transfer(owner, buyer, numTokens);
+      return true;
+    }
 }
-
-
-
-
