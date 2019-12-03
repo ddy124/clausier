@@ -14,9 +14,7 @@ pragma solidity ^0.5.0;
  */
 interface IERC20 {
     /**
-     * @dev Returns the amount of tokens in existence.
-     */
-    function totalSupply() external view returns (uint256);
+
 
     /**
      * @dev Returns the amount of tokens owned by `account`.
@@ -38,8 +36,7 @@ interface IERC20 {
      * zero by default.
      *
      * This value changes when `approve` or `transferFrom` are called.
-     */
-    function allowance(address owner, address spender) external view returns (uint256);
+
 
     /**
      * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
@@ -54,8 +51,7 @@ interface IERC20 {
      * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
      *
      * Emits an `Approval` event.
-     */
-    function approve(address spender, uint256 amount) external returns (bool);
+
 
     /**
      * @dev Moves `amount` tokens from `sender` to `recipient` using the
@@ -76,11 +72,6 @@ interface IERC20 {
      */
     event Transfer(address indexed from, address indexed to, uint256 value);
 
-    /**
-     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
-     * a call to `approve`. `value` is the new allowance.
-     */
-    event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
 
@@ -254,5 +245,7 @@ contract clausePreemption is IERC20 {
       balances[buyer] = balances[buyer] + numTokens;
       emit Transfer(owner, buyer, numTokens);
       return true;
-    }
+}
+
+
 }
