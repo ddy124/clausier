@@ -143,13 +143,12 @@ contract clausePreemption is IERC20 {
         
         bool transferEffectue = false;
         
-        for (uint i=0; i< associes.length; i++) {
-            if(cessionnaire == associes[i].addr) {       // on regarde si le cessionnaire est un associé
-                tokenAchat.transfer(address(this), paymentAmount);  // on transfère au SC les actions
-                transferEffectue = true;
-                etatContrat = EtatsContrat.STATUS_OPEN_ASSOCIE;
+        if (balanceOf(cessionnaire) > 0) { // si la balance du cessionnaire est > 0, alors c'est un associé
+            tokenAchat.transfer(address(this), paymentAmount);
+            transferEffectue = true;
+            etatContrat = EtatsContrat.STATUS_OPEN_ASSOCIE;
             }
-        }
+        
         if (transferEffectue == false) { // cette vérification permet de savoir si un transfer a déjà été fait, donc si le cessionnaire était un associé ou non
             // si on rentre dans ce if, c'est que le cessionnaire n'est pas un associé
             tokenAchat.transfer(address(this), paymentAmount);
@@ -161,7 +160,7 @@ contract clausePreemption is IERC20 {
         etatContrat = EtatsContrat.STATUS_INITIALIZED;
     }
     
-    function exercicePreemption(IERC20 tokenAchat, uint nbreActions) public {
+    function exercicePreemption(uint _nbreActions) public {
         
         require(etatContrat == EtatsContrat.STATUS_INITIALIZED);
         
@@ -169,13 +168,13 @@ contract clausePreemption is IERC20 {
         require(now < temps + 91 days);
         
         //on calcule le prix à payer par l'associé en fonction du nombre d'actions voulues
-        uint paiement = nbreActions * prixToken;
+        uint paiement = _nbreActions * prixToken;
         
         for (uint i=0; i< associes.length; i++) {
             if(msg.sender == associes[i].addr) {     //on vérifie que msg.sender est un associé
                 tokenAchat.transfer(address(this), paiement);
-                nbreActionsPreemptes = nbreActionsPreemptes + nbreActions;  //on incrémente le nbreActionsPreemptes
-                associesPreemptes.push(associes[i]);
+                nbreActionsPreemptes = nbreActionsPreemptes + _nbreActions;  //on incrémente le nbreActionsPreemptes
+                associesPreemptes.push(associes[i]);    //on ajoute l'associé dans le tableau des associés ayant préemptés
                 
                 etatContrat = EtatsContrat.STATUS_OPEN_ASSOCIE;
             }
@@ -245,7 +244,5 @@ contract clausePreemption is IERC20 {
       balances[buyer] = balances[buyer] + numTokens;
       emit Transfer(owner, buyer, numTokens);
       return true;
-}
-
-
+	}
 }
