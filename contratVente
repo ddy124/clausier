@@ -1,0 +1,89 @@
+pragma solidity ^0.4.23;
+
+import "https://github.com/theabyssportal/DAICO-Smart-Contract/blob/master/token/IERC20Token.sol";
+
+
+contract venteADistance {
+    
+    IERC20Token public tokenPaiement; 
+    
+    string termesContrat;
+
+    uint public prix;
+    uint public delai;
+    
+    address public acheteur;
+    address public vendeur;
+    
+    bool public contratCree = false;
+    bool public achatEffectue = false;
+    bool public bienRecu = false;
+    bool public argentRetire = false;
+    
+    
+    event contratCree();
+    event achatConfirme();
+    event bienAEteRecu();
+    event argentRecupere();
+
+    
+    constructor( address _vendeur, address _acheteur, string memory _termesContrat, uint _prix) public {
+        vendeur = _vendeur;
+        acheteur = _acheteur;
+        termesContrat = _termesContrat;
+        prix = _prix;
+        contratCree = true;
+        emit contratCree();
+        
+    }
+
+    
+    function confirmationAchat () public   {
+        
+        require (msg.sender == acheteur);
+        require(contratCree == true);
+        require(tokenPaiement.transferFrom(msg.sender, this, (prix *2)));
+        delai = now;
+        achatEffectue = true;
+        
+        emit achatConfirme();
+    }
+    
+    
+    function receptionBien () public   {
+        require(msg.sender == acheteur);
+        require(achatEffectue==true);
+        bienRecu = true;
+        emit bienAEteRecu();
+    }
+  
+  
+    function retraitArgent () public  {
+        
+        require(msg.sender ==acheteur || msg.sender == vendeur);
+        
+        if (msg.sender == vendeur) {
+            
+            require (bienRecu==true);
+            require(tokenPaiement.transfer(msg.sender, prix));
+            require(tokenPaiement.transfer(acheteur, this.balance));
+            argentRetire = true;
+            emit argentRecupere();
+            
+            
+      } else if (msg.sender == acheteur) {
+          
+            require(bienRecu == false);
+            require(delai > 30 days);
+            require(tokenPaiement.transfer(msg.sender, this.balance));
+            argentRetire = true;
+
+            emit argentRecupere();
+          
+      }
+
+  }
+  
+
+   
+}
