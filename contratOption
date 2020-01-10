@@ -185,6 +185,7 @@ contract CoveredCall {
 		// Validate contract state
 		require(now < expirationDate, "Cannot open an expired contract");
 		require(currentState == ContractStates.STATUS_INITIALIZED, "Contract must be in initialized state to open");
+		require(msg.sender != seller);
 
 		// Save off the buyer
 		buyer = msg.sender;
