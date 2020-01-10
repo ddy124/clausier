@@ -102,6 +102,7 @@ contract contratATerme {
 
 	// Events triggered when users take action
 	event Opened(address indexed _buyer);
+	event Initialized(address indexed _seller, uint256 _underlyingAssetAmount);
 	event Redeemed(address indexed _buyer);
 
 	address public buyer; // The address that created the contract
@@ -177,7 +178,7 @@ contract contratATerme {
 		// Validate contract state
 		require(now < expirationDate, "Cannot open an expired contract");
 		require(currentState == ContractStates.STATUS_INITIALIZED, "Contract must be in initialized state to open");
-		require(msg.sender == buyer, "Only the  buyer can pay the forward");
+		require(msg.sender != seller);
 
 		// Save off the buyer
 		buyer = msg.sender;
@@ -196,7 +197,7 @@ contract contratATerme {
 		// Validate contract state
 		require(currentState == ContractStates.STATUS_OPEN);
 		require(msg.sender == buyer || msg.sender == seller);
-    require(now > expirationDate,);
+        require(now > expirationDate);
 
 
 		// Pay out the buyer from escrow
