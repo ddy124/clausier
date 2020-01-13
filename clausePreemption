@@ -1,248 +1,203 @@
-//Write your own contracts here. Currently compiles using solc v0.4.15+commit.bbb8e64f.
-/**
- *Submitted for verification at Etherscan.io on 2019-07-28
-*/
-
-// poole_party
-// File: openzeppelin-solidity/contracts/token/ERC20/IERC20.sol
-
 pragma solidity ^0.5.0;
 
-/**
- * @dev Interface of the ERC20 standard as defined in the EIP. Does not include
- * the optional functions; to access them see `ERC20Detailed`.
- */
 interface IERC20 {
-    /**
-
-
-    /**
-     * @dev Returns the amount of tokens owned by `account`.
-     */
+   
     function balanceOf(address account) external view returns (uint256);
 
-    /**
-     * @dev Moves `amount` tokens from the caller's account to `recipient`.
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     *
-     * Emits a `Transfer` event.
-     */
     function transfer(address recipient, uint256 amount) external returns (bool);
-
-    /**
-     * @dev Returns the remaining number of tokens that `spender` will be
-     * allowed to spend on behalf of `owner` through `transferFrom`. This is
-     * zero by default.
-     *
-     * This value changes when `approve` or `transferFrom` are called.
-
-
-    /**
-     * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     *
-     * > Beware that changing an allowance with this method brings the risk
-     * that someone may use both the old and the new allowance by unfortunate
-     * transaction ordering. One possible solution to mitigate this race
-     * condition is to first reduce the spender's allowance to 0 and set the
-     * desired value afterwards:
-     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
-     *
-     * Emits an `Approval` event.
-
-
-    /**
-     * @dev Moves `amount` tokens from `sender` to `recipient` using the
-     * allowance mechanism. `amount` is then deducted from the caller's
-     * allowance.
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     *
-     * Emits a `Transfer` event.
-     */
+   
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    
+    function totalSupply() external  view returns (uint256);
 
-    /**
-     * @dev Emitted when `value` tokens are moved from one account (`from`) to
-     * another (`to`).
-     *
-     * Note that `value` may be zero.
-     */
     event Transfer(address indexed from, address indexed to, uint256 value);
 
 }
 
 
-pragma solidity 0.5.8;
+
+
+// rendre le SC le plus autonome possible, token.BALANCE OF, transfer et transferFROM, safemath event et constructor, 
+
+
 
 contract clausePreemption is IERC20 {
     
-    	enum EtatsContrat {
-		NONE,
-		STATUS_INITIALIZED, // Juste après la création du contrat
-		STATUS_OPEN_TIERCE, // La tierce personne a ouvert un contrat
-		STATUS_OPEN_ASSOCIE, // l'associé a ouvert un contrat
-		STATUS_REDEEMED // Le vendeur a récupéré l'argent
-	}
+    enum EtatsContrat {
+		none, //
+		initialise, // 
+		ouvertAPreemption, // 
+		pretarepartir,
+		preemptionTerminee // 
+		}
 	
-		// Permet d'enregistrer le statut du contrat
-	    EtatsContrat public etatContrat;
+	EtatsContrat public etatContrat;
     
-    //Evenements
-    event OuvertAPreemption(uint prixAction, uint nbreActions);
+    
+    struct Associe {
+        uint256 prixAPayer;
+        uint256 actionsSouhaitees;
+        bool droitExerce;
+    }
+    
+    mapping (address => Associe) public associesPreemptaires;
+    mapping (address => uint256 ) cedants; //
+
+    address cessionnaire;
+    address cedant;
+
+    IERC20 public tokenAction;      
+    IERC20 public tokenAchat;     
+    
+    uint256 public nbActionsAVendre; 
+    uint256 public nbActionsVoulues;
+    uint256 public prixAction;    
+    uint256 public delai;        
+    uint256 public prixCession; 
+    uint256 public nbActionsPreemptees; 
+    
+    
+    
+    event ouvertAPreemption(uint prixAction, uint nbreActions);
     event EchecPreemption(uint quantiteToken, uint nbreActionsPreemptes);
     event ReussitePreemption(uint quantiteToken);
     
     
-    struct Associe {
-        address addr;
-        uint256 partSociete;
-        uint256 nbActionVoulue;
-    }
+        // constructor qui set l'etat et les token
+
     
-    mapping(address => uint256) balances;   //permet d'avoir le nombre de token associé à une adresse
-    
-    address public cedant;    // adresse du cedant
-    Associe[] public associes;    // tableau d'associés
-    Associe[] public associesPreemptes; // tableau des associés ayant préemptés
-    address public societe;     // l'adresse de la société
-    
-    IERC20 public tokenActif;      // l'action que veut vendre le cédant
-    IERC20 public tokenAchat;     // les token qui servent à payer
-    
-    uint256 public quantiteToken; // la quantité d'action à vendre
-    uint256 public prixToken;     // le prix par action
-    uint256 public temps;         // variable qui va nous servir pour compter la date d'échéance de 3 mois
-    uint256 public paymentAmount; // le paiement de l'acheteur
-    uint256 public nbreActionsPreemptes; // nombre d'action préemptées par un associé
-    
-    // Le cédant initie le contrat en indiquant tous les paramètres
-    constructor(IERC20 _tokenActif, IERC20 _tokenAchat) public {
-          
-        // paramètres valides
-        require(address(_tokenActif) != address(0), "L'adresse du token ne doit pas être 0x0");
-        require(address(_tokenAchat) != address(0), "Le token d'achat ne doit pas être 0x0");
-          
-        // Enregistrement des paramètres
-        cedant = msg.sender;
-        tokenActif = _tokenActif;
-        tokenAchat = _tokenAchat;
-          
-        // le contrat n'existe pas encore (à voir si on a besoin de mettre des etats au contrat)
-        etatContrat = EtatsContrat.NONE;
-    }
-    
-    
-    function transfertAction(uint256 nbreActionsVendues, uint256 prixAction, address cessionnaire) public {
+    function transfertAction(uint256 _nbActionsAVendre, uint256 _prixAction, address _cessionnaire) public { //** utiliser la convention
         
-        quantiteToken = nbreActionsVendues; // on met à jour la quantité d'action à vendre
-        prixToken = prixAction;             // on met à jour le prix de l'action
-        paymentAmount = quantiteToken * prixToken;  // on calcule le prix à payer
+        require (etatContrat == EtatsContrat.none);
+        require (tokenAction.balanceOf(msg.sender) > 0); //** check si est un actionnaire
+        require (_nbActionsAVendre <= tokenAction.balanceOf(msg.sender)); //** regarde si il assez de tokenAction
         
-        bool transferEffectue = false;
         
-        if (balanceOf(cessionnaire) > 0) { // si la balance du cessionnaire est > 0, alors c'est un associé
-            tokenAchat.transfer(address(this), paymentAmount);
-            transferEffectue = true;
-            etatContrat = EtatsContrat.STATUS_OPEN_ASSOCIE;
-            }
-        
-        if (transferEffectue == false) { // cette vérification permet de savoir si un transfer a déjà été fait, donc si le cessionnaire était un associé ou non
-            // si on rentre dans ce if, c'est que le cessionnaire n'est pas un associé
-            tokenAchat.transfer(address(this), paymentAmount);
-            temps = now;
-            emit OuvertAPreemption(prixAction, nbreActionsVendues);
-            etatContrat = EtatsContrat.STATUS_OPEN_TIERCE;
+        cedant = msg.sender;//** cedant est le msg.sender
+        nbActionsAVendre = _nbActionsAVendre; // on met à jour la quantité d'action à vendre
+        prixAction = _prixAction;             // on met à jour le prix de l'action
+        prixCession = nbActionsAVendre * prixAction;  // on calcule le prix à payer
+
+
+        if (tokenAction.balanceOf(cessionnaire) == 0){ //cessionnaire =/= associé
+            
+            
+            cedants [cedant] += nbActionsAVendre;
+            
+            require(tokenAction.transferFrom(cedant, address(this), nbActionsAVendre));
+            
+            delai = now;
+            
+
+            etatContrat = EtatsContrat.ouvertAPreemption;
+
         }
         
-        etatContrat = EtatsContrat.STATUS_INITIALIZED;
+        else { 
+            
+            // a determiner
+            
+            }
     }
     
-    function exercicePreemption(uint _nbreActions) public {
+    
+    
+    
+    
+    function exercicePreemption(uint _nbActionsVoulues) public {
         
-        require(etatContrat == EtatsContrat.STATUS_INITIALIZED);
+        require(etatContrat == EtatsContrat.ouvertAPreemption);
         
-        // on vérifie qu'il ne s'est pas encore passé 3 mois
-        require(now < temps + 91 days);
+        require(now < delai + 91 days);
         
-        //on calcule le prix à payer par l'associé en fonction du nombre d'actions voulues
-        uint paiement = _nbreActions * prixToken;
+        // c pas le cedant
         
-        for (uint i=0; i< associes.length; i++) {
-            if(msg.sender == associes[i].addr) {     //on vérifie que msg.sender est un associé
-                tokenAchat.transfer(address(this), paiement);
-                nbreActionsPreemptes = nbreActionsPreemptes + _nbreActions;  //on incrémente le nbreActionsPreemptes
-                associesPreemptes.push(associes[i]);    //on ajoute l'associé dans le tableau des associés ayant préemptés
-                
-                etatContrat = EtatsContrat.STATUS_OPEN_ASSOCIE;
-            }
-        }
+        require(tokenAction.balanceOf(msg.sender) > 0);
+        
+        Associe storage exerceur = associesPreemptaires[msg.sender];
+
+        require(exerceur.droitExerce == false);   // require qu'il n'a pas déjà exercé son droit de préemption
+        
+        require(_nbActionsVoulues <= nbActionsAVendre);
+        
+        exerceur.droitExerce = true;
+
+        exerceur.actionsSouhaitees = _nbActionsVoulues;
+        
+        exerceur.prixAPayer = _nbActionsVoulues * prixAction;
+        
+        nbActionsPreemptees += _nbActionsVoulues;
+        
+        require(tokenAchat.transferFrom(msg.sender, address(this), exerceur.prixAPayer));
+    
+        etatContrat = EtatsContrat.pretarepartir; 
+
     }
+	
+    
     
     function repartitionPreemption() public {
         
-        //on vérifie que le délai soit passé
-        require(now > temps + 91 days);
         
-        //on vérifie que le msg.sender soit la société
-        require(msg.sender == societe);
+        require(etatContrat == EtatsContrat.pretarepartir);
         
-        if(quantiteToken > nbreActionsPreemptes) { // si le nombre d'actions préemptées est inférieur au nombre d'action à vendre
-            for(uint i=0; i< associesPreemptes.length; i++) {
+        require(now > delai + 91 days);
+        
+        require(associesPreemptaires[msg.sender].droitExerce == true);
+        
+        Associe storage preemptaire  =  associesPreemptaires[msg.sender];
+        
+        
+        
+        if(nbActionsAVendre > nbActionsPreemptees) { // si le nombre d'actions préemptées est inférieur au nombre d'action à vendre
+            
+            uint256 montant = preemptaire.prixAPayer;
+        
+            require(tokenAchat.transfer(msg.sender, montant));
+
+            
+        }
+        
+        else if (nbActionsAVendre == nbActionsPreemptees) {
+            
+            uint256 quantiteActions =  preemptaire.actionsSouhaitees;
+            uint256 prixVente = preemptaire.prixAPayer;
+            require(tokenAction.transfer(msg.sender, quantiteActions));
+            require(tokenAchat.transfer(cedant, prixVente ));
+
+            
+            
+            
+            
+        } else  {    // si quantiteToken < nbreActionsPreemptes
+            
                 
-                //on rembourse les associés
-                tokenAchat.transfer(associesPreemptes[i].addr, associes[i].nbActionVoulue * prixToken);
-                emit EchecPreemption(quantiteToken, nbreActionsPreemptes);
-            }
-        } else if (quantiteToken == nbreActionsPreemptes) {
-            for (uint i=0; i< associesPreemptes.length; i++) {
+                uint256 totalActions = tokenAction.totalSupply();
                 
-                // on transfère les actions aux associés ayant préemptés
-                tokenActif.transfer(associesPreemptes[i].addr,associes[i].nbActionVoulue);
-                emit ReussitePreemption(quantiteToken);
-            }
-        } else {    // si quantiteToken < nbreActionsPreemptes
-            for (uint i=0; i< associesPreemptes.length; i++) {
+                uint256 partAssocie = ((tokenAction.balanceOf(msg.sender)) / totalActions) * 100;
                 
-                //on calcule le nombre d'action à récupérer en fonction de la part de l'associé dans la société
-                uint256 actionRecuperees = (associesPreemptes[i].nbActionVoulue * associesPreemptes[i].partSociete)/100;
+                uint256 actionsProrata = (nbActionsAVendre * partAssocie) /100;
                 
-                // on transfère le nombre d'action à l'associé
-                tokenActif.transfer(associesPreemptes[i].addr, actionRecuperees);
-                emit ReussitePreemption(quantiteToken);
-            }
+                uint256 actionsAEnvoyer;
+                
+
+                if (actionsProrata > preemptaire.actionsSouhaitees ) {
+                    
+                    uint256 actionsAEnvoyer = preemptaire.actionsSouhaitees;
+                     
+                }  else {
+                   
+                    uint256  actionsAEnvoyer  = actionsProrata;
+                    
+                }
+                
+                // on transfère le nombre d'actions à l'associé
+                require(tokenAction.transfer(msg.sender, actionsAEnvoyer));
+                
+                etatContrat = EtatsContrat.preemptionTerminee;
+
+
         }
     }
     
-    function recupererArgent() public {
-        require(msg.sender == cedant);
-        if(etatContrat == EtatsContrat.STATUS_OPEN_ASSOCIE || etatContrat == EtatsContrat.STATUS_OPEN_TIERCE){
-            tokenAchat.transfer(cedant, paymentAmount);
-        }
-    }
-    
-    
-    
-    //implémentation des fonctions liées aux tokens
-    function balanceOf(address tokenOwner) public view returns (uint) {
-  return balances[tokenOwner];
-    }
-    
-    function transfer(address receiver, uint numTokens) public returns (bool) {
-      require(numTokens <= balances[msg.sender]);
-      balances[msg.sender] = balances[msg.sender] - numTokens;
-      balances[receiver] = balances[receiver] + numTokens;
-      emit Transfer(msg.sender, receiver, numTokens);
-      return true;
-    }
-    
-    function transferFrom(address owner, address buyer, uint numTokens) public returns (bool) {
-      require(numTokens <= balances[owner]);
-      balances[owner] = balances[owner] - numTokens;
-      balances[buyer] = balances[buyer] + numTokens;
-      emit Transfer(owner, buyer, numTokens);
-      return true;
-	}
 }
